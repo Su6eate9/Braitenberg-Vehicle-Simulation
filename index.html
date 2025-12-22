@@ -11,6 +11,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
+    // Shim para evitar erro de process is not defined em produção
+    window.process = { env: { API_KEY: "" } };
+    
     tailwind.config = {
       darkMode: 'class',
       theme: {
@@ -67,5 +70,6 @@
 </head>
 <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display">
   <div id="root"></div>
+  <script type="module" src="./index.tsx"></script>
 </body>
 </html>

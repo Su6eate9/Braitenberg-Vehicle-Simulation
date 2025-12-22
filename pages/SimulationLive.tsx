@@ -52,44 +52,46 @@ const SimulationLive: React.FC = () => {
         const dx = lightPos.x - sPos.x;
         const dy = lightPos.y - sPos.y;
         const distSq = dx*dx + dy*dy;
-        // Resposta sensorial calibrada para as novas fórmulas
-        return Math.min(100, 5000 / Math.max(25, distSq));
+        return Math.min(100, 5000 / Math.max(20, distSq));
       };
 
       const sL = getIntensity(sLPos);
       const sR = getIntensity(sRPos);
       setSensorValues({ l: sL, r: sR });
 
-      // LÓGICA PURA DE BRAITENBERG
+      // LÓGICA PURA DE BRAITENBERG (Mecanismos de Atuação)
       const baseV = configSpeed / 20;
-      const gain = configGain * 0.25;
+      const gain = configGain * 0.3;
       
       let mL = baseV;
       let mR = baseV;
 
       switch(vehicleType) {
         case VehicleType.FEAR:
-          // 2a: Ipsilateral (+) com sensores traseiros
+          // 2a: Medo (Ipsilateral Excitatório + Sensores Traseiros)
           mL = baseV + sL * gain;
           mR = baseV + sR * gain;
           break;
           
         case VehicleType.AGGRESSION:
-          // 2b: Contralateral (+) -> Persegue rapidamente
-          mL = baseV + sR * gain * 2.5;
-          mR = baseV + sL * gain * 2.5;
+          // 2b: Agressão (Contralateral Excitatório)
+          // Luz à direita acelera motor esquerdo -> vira para a direita (alvo)
+          mL = baseV + sR * gain * 2.0;
+          mR = baseV + sL * gain * 2.0;
           break;
           
         case VehicleType.LOVE:
-          // 3a: Ipsilateral (-) -> Aproxima-se e para (Repouso)
+          // 3a: Amor (Ipsilateral Inibitório)
+          // Luz à esquerda desacelera motor esquerdo -> vira para a esquerda e para
           mL = Math.max(0, baseV - sL * gain * 1.5);
           mR = Math.max(0, baseV - sR * gain * 1.5);
           break;
           
         case VehicleType.EXPLORER:
-          // 3b: Contralateral (-) -> Orbita/Desvia
-          mL = Math.max(0.5, baseV - sR * gain * 1.2);
-          mR = Math.max(0.5, baseV - sL * gain * 1.2);
+          // 3b: Explorador (Contralateral Inibitório)
+          // Luz à direita desacelera motor esquerdo -> desvia da luz
+          mL = Math.max(0.6, baseV - sR * gain * 1.2);
+          mR = Math.max(0.6, baseV - sL * gain * 1.2);
           break;
       }
       
@@ -118,10 +120,10 @@ const SimulationLive: React.FC = () => {
     return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
   }, [updateSimulation]);
 
-  const handleLightMove = (e: React.MouseEvent | React.TouchEvent) => {
+  const handleLightMove = (e: any) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const x = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
-    const y = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
     const relX = ((x - rect.left) / rect.width) * 100;
     const relY = ((y - rect.top) / rect.height) * 100;
     setLightPos({ x: Math.max(0, Math.min(100, relX)), y: Math.max(0, Math.min(100, relY)) });
@@ -189,7 +191,7 @@ const SimulationLive: React.FC = () => {
                 <span className="text-2xl font-bold font-mono text-primary">{distance.toFixed(2)}<span className="text-xs ml-1 font-sans">m</span></span>
               </div>
               <div className="flex justify-between items-end">
-                <span className="text-xs text-slate-500">Processamento</span>
+                <span className="text-xs text-slate-500">Uptime</span>
                 <span className="text-2xl font-bold font-mono text-emerald-500">{Math.floor(elapsedTime/1000)}<span className="text-xs ml-1 font-sans">s</span></span>
               </div>
             </div>
@@ -206,7 +208,7 @@ const SimulationLive: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-mono"><span>M_L (Esq)</span><span>{Math.round(motorValues.l * 10)}% PWM</span></div>
+                  <div className="flex justify-between text-[10px] font-mono"><span>M_L (PWM)</span><span>{Math.round(motorValues.l * 10)}%</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
                     <div className="h-full bg-primary/50" style={{ width: `${Math.min(100, motorValues.l * 15)}%` }}></div>
                   </div>
@@ -220,7 +222,7 @@ const SimulationLive: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-mono"><span>M_R (Dir)</span><span>{Math.round(motorValues.r * 10)}% PWM</span></div>
+                  <div className="flex justify-between text-[10px] font-mono"><span>M_R (PWM)</span><span>{Math.round(motorValues.r * 10)}%</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-500/50" style={{ width: `${Math.min(100, motorValues.r * 15)}%` }}></div>
                   </div>
