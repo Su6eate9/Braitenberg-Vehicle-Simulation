@@ -1,195 +1,261 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { VehicleType, SimulationStatus, Simulation } from '../types';
+import { VEHICLE_DETAILS } from '../constants';
 
 const SimulationLive: React.FC = () => {
-  const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Parâmetros vindos da configuração
   const vehicleType = (location.state?.vehicleType as VehicleType) || VehicleType.LOVE;
-  const simName = (location.state?.simName as string) || `Exp. ${vehicleType.split(': ')[1]}`;
+  const simName = (location.state?.simName as string) || `P3: ${vehicleType.split(': ')[1]}`;
+  const configGain = (location.state?.gain as number) || 2.5;
+  const configSpeed = (location.state?.speed as number) || 80;
+  
+  const vDetails = (VEHICLE_DETAILS as any)[vehicleType];
   
   const [isPlaying, setIsPlaying] = useState(true);
-  const [neuralGain, setNeuralGain] = useState(location.state?.gain || 2.5);
-  const [simSpeed, setSimSpeed] = useState(1.0); // Simulation speed multiplier
-  const [isSavingPrefs, setIsSavingPrefs] = useState(false);
-  
-  const [pos, setPos] = useState({ x: 50, y: 70 });
+  const [pos, setPos] = useState({ x: 50, y: 50 });
   const [angle, setAngle] = useState(-Math.PI / 2);
-  const [lightPos, setLightPos] = useState({ x: 50, y: 30 });
-  const [sensorValues, setSensorValues] = useState({ l: 0, r: 0 });
-
+  const [lightPos, setLightPos] = useState({ x: 50, y: 20 });
   const [distance, setDistance] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [sensorValues, setSensorValues] = useState({ l: 0, r: 0 });
+  const [motorValues, setMotorValues] = useState({ l: 0, r: 0 });
+  
+  const lastTimeRef = useRef<number>(0);
+  const requestRef = useRef<number>(0);
 
-  const requestRef = useRef<number>(null);
-  const lastTimeRef = useRef<number>(null);
+  const updateSimulation = useCallback((time: number) => {
+    if (lastTimeRef.current !== 0 && isPlaying) {
+      const dt = (time - lastTimeRef.current) / 1000;
+      setElapsedTime(prev => prev + (time - lastTimeRef.current));
+      
+      const sensorOffset = 6; // Geometria do robô
+      const wheelBase = 6;
+      
+      // 1. Localização Espacial dos Sensores
+      // CORREÇÃO: Veículo Fear usa sensores TRASEIROS (Braitenberg, 1984)
+      const getSensorPos = (side: 'l' | 'r') => {
+        // Fear: sensores traseiros permitem fuga com conexões ipsilaterais excitatórias
+        // Demais: sensores frontais para aproximação/exploração
+        const baseAngle = vehicleType === VehicleType.FEAR ? angle + Math.PI : angle;
+        const sideAngle = side === 'l' ? baseAngle - 0.6 : baseAngle + 0.6;
+        return {
+          x: pos.x + Math.cos(sideAngle) * sensorOffset,
+          y: pos.y + Math.sin(sideAngle) * sensorOffset
+        };
+      };
 
-  const sensorDistance = 4;
-  const sensorAngle = 0.5;
-  const wheelbase = 5;
+      const sLPos = getSensorPos('l');
+      const sRPos = getSensorPos('r');
 
-  const handleBack = () => {
-    navigate('/');
-  };
+      // 2. Cálculo da Intensidade Luminosa (Lei do Inverso do Quadrado)
+      const getIntensity = (sPos: {x: number, y: number}) => {
+        const dx = lightPos.x - sPos.x;
+        const dy = lightPos.y - sPos.y;
+        const distSq = dx*dx + dy*dy;
+        // Normalização científica: quanto mais perto, mais forte, até 100%
+        return Math.min(100, 4000 / Math.max(20, distSq));
+      };
 
-  const savePreferences = () => {
-    setIsSavingPrefs(true);
-    const prefs = {
-      neuralGain,
-      simSpeed,
-      vehicleType
-    };
-    localStorage.setItem('braitenberg_prefs', JSON.stringify(prefs));
-    
-    setTimeout(() => {
-      setIsSavingPrefs(false);
-    }, 2000);
-  };
+      const sL = getIntensity(sLPos);
+      const sR = getIntensity(sRPos);
+      setSensorValues({ l: sL, r: sR });
 
-  const saveSimulation = () => {
-    const durationSeconds = Math.floor(elapsedTime / 1000);
-    const durationStr = `${Math.floor(durationSeconds / 60)}m ${durationSeconds % 60}s`;
-    const newSim: Simulation = {
-      id: `user_sim_${Date.now()}`,
-      name: simName,
-      vehicleType,
-      status: SimulationStatus.COMPLETED,
-      timestamp: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-      duration: durationStr,
-      speed: `${(distance / (durationSeconds || 1)).toFixed(1)} m/s`,
-      metrics: { distance: `${distance.toFixed(1)} m`, avgSpeed: `${(distance / (durationSeconds || 1)).toFixed(1)} m/s`, sensorL: sensorValues.l, sensorR: sensorValues.r }
-    };
-    const saved = JSON.parse(localStorage.getItem('userSimulations') || '[]');
-    localStorage.setItem('userSimulations', JSON.stringify([newSim, ...saved]));
-    navigate('/history');
-  };
-
-  const updateSimulation = (time: number) => {
-    if (lastTimeRef.current !== undefined && isPlaying) {
-      const rawDeltaTime = time - lastTimeRef.current;
-      const deltaTime = (rawDeltaTime / 1000) * simSpeed;
-      setElapsedTime(prev => prev + (rawDeltaTime * simSpeed));
-
-      const slX = pos.x + Math.cos(angle - sensorAngle) * sensorDistance;
-      const slY = pos.y + Math.sin(angle - sensorAngle) * sensorDistance;
-      const srX = pos.x + Math.cos(angle + sensorAngle) * sensorDistance;
-      const srY = pos.y + Math.sin(angle + sensorAngle) * sensorDistance;
-
-      const distL = Math.max(1, Math.sqrt((slX - lightPos.x) ** 2 + (slY - lightPos.y) ** 2));
-      const distR = Math.max(1, Math.sqrt((srX - lightPos.x) ** 2 + (srY - lightPos.y) ** 2));
-      const intensityL = 1000 / (distL * distL);
-      const intensityR = 1000 / (distR * distR);
-      setSensorValues({ l: Math.min(100, intensityL * 10), r: Math.min(100, intensityR * 10) });
-
-      let wheelL = 0.5, wheelR = 0.5;
-      const gainFactor = 0.2 * neuralGain;
+      // 3. Lógica de Controle Neural Fiel (Baseada em Braitenberg, 1984)
+      const baseV = configSpeed / 25; // Velocidade base convertida do PWM
+      const gain = configGain * 0.15; // Ganho mV/lx aplicado
+      
+      let mL = baseV;
+      let mR = baseV;
 
       switch(vehicleType) {
-        case VehicleType.FEAR: wheelL += intensityL * gainFactor; wheelR += intensityR * gainFactor; break;
-        case VehicleType.AGGRESSION: wheelL += intensityR * gainFactor; wheelR += intensityL * gainFactor; break;
-        case VehicleType.LOVE: wheelL = Math.max(0.1, 2 - intensityR * gainFactor); wheelR = Math.max(0.1, 2 - intensityL * gainFactor); break;
-        case VehicleType.EXPLORER: wheelL = Math.max(0.1, 2 - intensityL * gainFactor); wheelR = Math.max(0.1, 2 - intensityR * gainFactor); break;
+        case VehicleType.FEAR: // 2a: Ipsilateral (+) + Sensores Traseiros = Fuga
+          // Com sensores atrás: luz detectada acelera motor do mesmo lado
+          // Resultado: robô vira PARA LONGE da fonte (comportamento autêntico de fuga)
+          mL = baseV + sL * gain;
+          mR = baseV + sR * gain;
+          break;
+        case VehicleType.AGGRESSION: // 2b: Contralateral (+) -> Acelera lado oposto para atacar
+          mL = baseV + sR * gain * 1.5;
+          mR = baseV + sL * gain * 1.5;
+          break;
+        case VehicleType.LOVE: // 3a: Ipsilateral (-) -> Desacelera para parar perto
+          mL = Math.max(0, baseV - sL * gain * 1.2);
+          mR = Math.max(0, baseV - sR * gain * 1.2);
+          break;
+        case VehicleType.EXPLORER: // 3b: Contralateral (-) -> Desacelera oposto para orbitar
+          mL = Math.max(0.2, baseV - sR * gain);
+          mR = Math.max(0.2, baseV - sL * gain);
+          break;
       }
+      
+      setMotorValues({ l: mL, r: mR });
 
-      const v = (wheelL + wheelR) / 2, w = (wheelR - wheelL) / wheelbase;
-      const moveScale = 1.0 * simSpeed;
-      const nextAngle = angle + w * moveScale;
-      const stepX = v * Math.cos(nextAngle) * moveScale;
-      const stepY = v * Math.sin(nextAngle) * moveScale;
+      // 4. Cinemática Diferencial
+      const v = (mL + mR) / 2;
+      const omega = (mR - mL) / wheelBase;
 
-      const nextX = pos.x + stepX;
-      const nextY = pos.y + stepY;
+      const newAngle = angle + omega * dt * 12;
+      const newX = pos.x + Math.cos(newAngle) * v * dt * 18;
+      const newY = pos.y + Math.sin(newAngle) * v * dt * 18;
 
-      setDistance(prev => prev + Math.sqrt(stepX * stepX + stepY * stepY));
-      setPos({ x: nextX < 0 ? 100 : (nextX > 100 ? 0 : nextX), y: nextY < 0 ? 100 : (nextY > 100 ? 0 : nextY) });
-      setAngle(nextAngle);
+      setAngle(newAngle);
+      setPos({
+        x: Math.max(5, Math.min(95, newX)),
+        y: Math.max(5, Math.min(95, newY))
+      });
+      setDistance(prev => prev + v * dt * 5);
     }
     lastTimeRef.current = time;
     requestRef.current = requestAnimationFrame(updateSimulation);
-  };
+  }, [isPlaying, lightPos, pos, angle, vehicleType, configGain, configSpeed]);
 
   useEffect(() => {
     requestRef.current = requestAnimationFrame(updateSimulation);
     return () => { if (requestRef.current) cancelAnimationFrame(requestRef.current); };
-  }, [isPlaying, pos, angle, lightPos, neuralGain, simSpeed]);
+  }, [updateSimulation]);
 
-  const formattedTime = () => {
-    const s = Math.floor(elapsedTime / 1000), m = Math.floor(s / 60);
-    return `${m.toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+  const handleLightMove = (e: React.MouseEvent | React.TouchEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const y = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const relX = ((x - rect.left) / rect.width) * 100;
+    const relY = ((y - rect.top) / rect.height) * 100;
+    setLightPos({ x: Math.max(0, Math.min(100, relX)), y: Math.max(0, Math.min(100, relY)) });
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-background-light dark:bg-background-dark overflow-hidden">
-      <div className="max-w-6xl mx-auto w-full flex-1 flex flex-col">
-        <div className="flex items-center px-4 py-4 pt-12 pb-2 justify-between bg-background-light dark:bg-background-dark sticky top-0 z-20">
-          <button onClick={handleBack} className="flex items-center justify-center p-2 rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition"><span className="material-symbols-outlined">arrow_back</span></button>
-          <div className="flex flex-col items-center text-center px-2">
-            <h2 className="text-lg font-bold leading-tight tracking-tight max-w-[180px] truncate">{simName}</h2>
-            <span className="text-[10px] text-primary font-bold uppercase tracking-widest">{isPlaying ? 'Em Execução' : 'Pausado'}</span>
+    <div className="flex flex-col h-screen bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white overflow-hidden">
+      <header className="px-6 py-4 border-b border-slate-200 dark:border-white/5 flex justify-between items-center bg-white dark:bg-surface-dark z-30 shadow-sm">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate('/')} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-white/10 text-primary">
+            <span className="material-symbols-outlined">arrow_back</span>
+          </button>
+          <div>
+            <h2 className="font-bold text-base leading-tight">{simName}</h2>
+            <div className="flex gap-2 items-center mt-0.5">
+               <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{vehicleType}</span>
+               <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
+               <span className="text-[9px] text-primary font-mono">{configGain}mV/lx</span>
+            </div>
           </div>
-          <button onClick={saveSimulation} className="flex items-center justify-center px-4 py-2 rounded-xl bg-primary text-white shadow-lg hover:bg-primary/90 transition"><span className="text-sm font-bold">Salvar</span></button>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setIsPlaying(!isPlaying)} className={`p-2 rounded-xl border transition-all ${isPlaying ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'}`}>
+            <span className="material-symbols-outlined text-xl">{isPlaying ? 'pause' : 'play_arrow'}</span>
+          </button>
+          <button onClick={() => navigate('/history')} className="bg-primary text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg shadow-primary/20">
+            Finalizar
+          </button>
+        </div>
+      </header>
+
+      <div className="h-[55vh] relative bg-slate-950 overflow-hidden cursor-crosshair touch-none border-b border-white/10" onMouseMove={handleLightMove} onTouchMove={handleLightMove}>
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
+        
+        <div className="absolute pointer-events-none" style={{ left: `${lightPos.x}%`, top: `${lightPos.y}%`, transform: 'translate(-50%, -50%)' }}>
+           <div className="size-20 bg-amber-400/10 blur-2xl rounded-full animate-pulse"></div>
+           <div className="size-10 bg-amber-400 rounded-full shadow-[0_0_40px_#fbbf24] flex items-center justify-center">
+              <span className="material-symbols-outlined text-white text-xl">wb_sunny</span>
+           </div>
+           <div className="absolute -top-8 left-1/2 -translate-x-1/2 text-[8px] font-mono font-bold text-amber-500 whitespace-nowrap">FONTE_ATIVA_ESTIMULO</div>
         </div>
 
-        <main className="flex-1 flex flex-col lg:flex-row px-4 gap-6 overflow-y-auto pb-44 lg:pb-12 pt-4 no-scrollbar">
-          <div className="lg:flex-[2] flex flex-col gap-4">
-            <div onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); setLightPos({ x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 }); }} className="w-full aspect-[4/5] sm:aspect-video bg-[#0a0f18] rounded-3xl relative overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 cursor-crosshair">
-              <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#135bec 0.5px, transparent 0.5px)', backgroundSize: '20px 20px' }}></div>
-              <div className="absolute -translate-x-1/2 -translate-y-1/2 transition-all duration-300 pointer-events-none" style={{ left: `${lightPos.x}%`, top: `${lightPos.y}%` }}>
-                <div className="size-10 bg-yellow-400 rounded-full blur-md animate-pulse"></div>
-                <div className="absolute inset-0 flex items-center justify-center"><span className="material-symbols-outlined text-white text-2xl">light_mode</span></div>
+        <div className="absolute transition-all duration-100 ease-linear" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%, -50%) rotate(${angle + Math.PI/2}rad)` }}>
+           <div className="relative">
+              <div className="w-10 h-12 bg-slate-800 rounded-lg border-2 border-white/20 shadow-2xl flex flex-col items-center justify-center pt-1">
+                 <div className="flex gap-4 mb-2">
+                    <div className={`w-1 h-1 rounded-full ${sensorValues.l > 20 ? 'bg-red-500 animate-pulse' : 'bg-slate-600'}`}></div>
+                    <div className={`w-1 h-1 rounded-full ${sensorValues.r > 20 ? 'bg-red-500 animate-pulse' : 'bg-slate-600'}`}></div>
+                 </div>
+                 <span className={`material-symbols-outlined text-xl ${vDetails.color}`}>smart_toy</span>
               </div>
-              <div className="absolute transition-all duration-75 ease-linear" style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `translate(-50%, -50%) rotate(${angle + Math.PI/2}rad)` }}>
-                <div className="w-14 h-16 bg-surface-dark rounded-2xl flex flex-col items-center justify-center shadow-[0_0_25px_rgba(19,91,236,0.4)] border border-white/10 overflow-hidden"><span className="material-symbols-outlined text-primary text-3xl">smart_toy</span></div>
+              <div className="absolute -bottom-3 left-0 right-0 flex justify-center gap-3 opacity-60">
+                <div className="w-1.5 bg-primary rounded-full" style={{ height: `${motorValues.l * 4}px` }}></div>
+                <div className="w-1.5 bg-amber-500 rounded-full" style={{ height: `${motorValues.r * 4}px` }}></div>
               </div>
-              <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md text-white text-[10px] font-bold tracking-widest px-4 py-2 rounded-full">TEMPO: {formattedTime()} {simSpeed !== 1 && <span className="text-primary ml-2">{simSpeed.toFixed(1)}x</span>}</div>
-            </div>
-          </div>
-
-          <div className="lg:flex-1 flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-surface-dark border border-slate-200 shadow-sm"><div className="size-10 shrink-0 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><span className="material-symbols-outlined">route</span></div><div className="flex flex-col min-w-0"><span className="text-[10px] text-slate-500 font-bold uppercase">Distância</span><span className="text-sm font-bold truncate">{distance.toFixed(1)} m</span></div></div>
-              <div className="flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-surface-dark border border-slate-200 shadow-sm"><div className="size-10 shrink-0 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500"><span className="material-symbols-outlined">speed</span></div><div className="flex flex-col min-w-0"><span className="text-[10px] text-slate-500 font-bold uppercase">V. Média</span><span className="text-sm font-bold truncate">{(distance / (elapsedTime / 1000 || 1)).toFixed(1)} m/s</span></div></div>
-            </div>
-            
-            {/* Speed Control */}
-            <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white dark:bg-surface-dark border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between"><p className="text-sm font-bold flex items-center gap-2"><span className="material-symbols-outlined text-primary text-xl">fast_forward</span>Velocidade</p><div className="bg-primary/10 px-3 py-1 rounded-full text-primary text-xs font-mono font-bold">{simSpeed.toFixed(1)}x</div></div>
-              <input type="range" min="0.1" max="5.0" step="0.1" value={simSpeed} onChange={(e) => setSimSpeed(parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary" />
-            </div>
-
-            {/* Gain Control */}
-            <div className="flex flex-col gap-4 p-5 rounded-2xl bg-white dark:bg-surface-dark border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between"><p className="text-sm font-bold flex items-center gap-2"><span className="material-symbols-outlined text-primary text-xl">settings_input_component</span>Ganho Neural</p><div className="bg-primary/10 px-3 py-1 rounded-full text-primary text-xs font-mono font-bold">{neuralGain.toFixed(1)}x</div></div>
-              <input type="range" min="0.5" max="5" step="0.1" value={neuralGain} onChange={(e) => setNeuralGain(parseFloat(e.target.value))} className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary" />
-            </div>
-
-            {/* NEW: Save Settings Preference */}
-            <button 
-              onClick={savePreferences}
-              className={`w-full py-4 rounded-2xl border-2 font-bold text-sm flex items-center justify-center gap-3 transition-all active:scale-95 ${
-                isSavingPrefs 
-                ? 'bg-emerald-500 border-emerald-500 text-white' 
-                : 'bg-white dark:bg-surface-dark border-primary/20 text-primary hover:bg-primary/5 dark:hover:bg-primary/10'
-              }`}
-            >
-              <span className="material-symbols-outlined">
-                {isSavingPrefs ? 'check_circle' : 'save_as'}
-              </span>
-              {isSavingPrefs ? 'Preferências Salvas!' : 'Salvar Parâmetros Padrão'}
-            </button>
-          </div>
-        </main>
-      </div>
-
-      <div className="fixed bottom-0 left-0 w-full p-4 pb-12 bg-white/80 dark:bg-background-dark/95 backdrop-blur-xl border-t border-slate-200 z-30">
-        <div className="flex items-center justify-between max-w-lg mx-auto px-6">
-          <button onClick={() => { setPos({x:50, y:70}); setAngle(-Math.PI/2); setDistance(0); setElapsedTime(0); }} className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"><div className="size-12 rounded-full bg-slate-100 dark:bg-surface-dark border flex items-center justify-center text-slate-700 dark:text-white hover:bg-primary/10 transition-colors"><span className="material-symbols-outlined">restart_alt</span></div><span className="text-[10px] font-bold text-slate-500 uppercase">Reset</span></button>
-          <button onClick={() => setIsPlaying(!isPlaying)} className="flex flex-col items-center group -mt-10 gap-2"><div className={`size-20 p-5 rounded-full flex items-center justify-center text-white shadow-2xl transition-all ring-8 ring-white dark:ring-background-dark hover:scale-105 active:scale-95 ${isPlaying ? 'bg-primary shadow-primary/40' : 'bg-emerald-600 animate-pulse'}`}><span className="material-symbols-outlined text-5xl">{isPlaying ? 'pause' : 'play_arrow'}</span></div><span className={`text-[10px] font-bold uppercase transition-colors ${isPlaying ? 'text-primary' : 'text-emerald-600'}`}>{isPlaying ? 'Pausar' : 'Continuar'}</span></button>
-          <button onClick={() => navigate('/new')} className="flex flex-col items-center gap-1 group active:scale-90 transition-transform"><div className="size-12 rounded-full bg-slate-100 dark:bg-surface-dark border flex items-center justify-center text-slate-700 dark:text-white hover:bg-primary/10 transition-colors"><span className="material-symbols-outlined">tune</span></div><span className="text-[10px] font-bold text-slate-500 uppercase">Config</span></button>
+           </div>
         </div>
       </div>
+
+      <main className="flex-1 bg-background-light dark:bg-background-dark overflow-y-auto no-scrollbar p-6">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="p-5 rounded-3xl bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 shadow-sm">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Relatório Cinético</h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-end">
+                <span className="text-xs text-slate-500">Deslocamento</span>
+                <span className="text-2xl font-bold font-mono text-primary">{distance.toFixed(2)}<span className="text-xs ml-1 font-sans">m</span></span>
+              </div>
+              <div className="flex justify-between items-end">
+                <span className="text-xs text-slate-500">Amostragem</span>
+                <span className="text-2xl font-bold font-mono text-emerald-500">{Math.floor(elapsedTime/1000)}<span className="text-xs ml-1 font-sans">s</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-3xl bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 shadow-sm lg:col-span-2">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Monitoramento Sináptico</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-mono"><span>S_L (Sensor Esquerdo)</span><span>{sensorValues.l.toFixed(1)}%</span></div>
+                  <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
+                    <div className="h-full bg-primary" style={{ width: `${sensorValues.l}%` }}></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-mono"><span>M_L (Motor Esquerdo)</span><span>{motorValues.l.toFixed(2)} PWM</span></div>
+                  <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
+                    <div className="h-full bg-primary/50" style={{ width: `${Math.min(100, motorValues.l * 20)}%` }}></div>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-mono"><span>S_R (Sensor Direito)</span><span>{sensorValues.r.toFixed(1)}%</span></div>
+                  <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500" style={{ width: `${sensorValues.r}%` }}></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-mono"><span>M_R (Motor Direito)</span><span>{motorValues.r.toFixed(2)} PWM</span></div>
+                  <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500/50" style={{ width: `${Math.min(100, motorValues.r * 20)}%` }}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-3xl bg-primary/5 border border-primary/10 shadow-sm md:col-span-2 lg:col-span-1">
+            <h3 className="text-[10px] font-bold text-primary uppercase tracking-widest mb-4">Padrão Bio-Observado</h3>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="size-12 rounded-2xl bg-primary/20 flex items-center justify-center text-primary">
+                <span className="material-symbols-outlined">biotech</span>
+              </div>
+              <div className="flex-1">
+                <p className="text-xs font-bold leading-tight">{vDetails.bioParallel}</p>
+                <p className="text-[10px] text-slate-500 mt-1">Análogo Biológico</p>
+              </div>
+            </div>
+            <div className="bg-white/50 dark:bg-black/30 p-4 rounded-2xl border border-primary/10">
+              <p className="text-[9px] font-bold text-primary mb-2 flex items-center gap-1">
+                <span className="material-symbols-outlined text-[12px]">info</span> NOTA TÉCNICA
+              </p>
+              <p className="text-[10px] leading-relaxed text-slate-600 dark:text-slate-400">
+                {vehicleType === VehicleType.FEAR 
+                  ? "Sensores traseiros + conexões ipsilaterais excitatórias geram comportamento emergente de fuga, análogo a fotofobia em organismos simples."
+                  : "A resposta emergente demonstra o processamento sensorial bruto influenciando diretamente o torque motor, dispensando lógica centralizada."
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 };

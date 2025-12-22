@@ -15,6 +15,8 @@ export enum VehicleType {
 
 export interface Simulation {
   id: string;
+  // Added optional userId to allow simulations to be associated with specific researchers
+  userId?: string;
   name: string;
   vehicleType: VehicleType;
   status: SimulationStatus;
@@ -27,4 +29,22 @@ export interface Simulation {
     sensorL: number;
     sensorR: number;
   };
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  description: string;
+  requirement: number;
+  current: number;
+  isCompleted: boolean;
+  reward: string;
+  category: 'distance' | 'time' | 'count';
+}
+
+export interface UserProgress {
+  unlockedThemes: string[];
+  activeTheme: string;
+  missions: Mission[];
+  xp: number;
 }
