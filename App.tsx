@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
-import NewSimulation from './pages/NewSimulation';
-import SimulationLive from './pages/SimulationLive';
-import History from './pages/History';
-import Settings from './pages/Settings';
-import Analysis from './pages/Analysis';
-import Onboarding from './pages/Onboarding';
-import Auth from './pages/Auth';
-import BottomNav from './components/BottomNav';
-import { MOCK_DATABASE } from './constants';
+import Dashboard from './pages/Dashboard.tsx';
+import NewSimulation from './pages/NewSimulation.tsx';
+import SimulationLive from './pages/SimulationLive.tsx';
+import History from './pages/History.tsx';
+import Settings from './pages/Settings.tsx';
+import Analysis from './pages/Analysis.tsx';
+import Onboarding from './pages/Onboarding.tsx';
+import Auth from './pages/Auth.tsx';
+import BottomNav from './components/BottomNav.tsx';
+import { MOCK_DATABASE } from './constants.ts';
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
@@ -20,13 +20,10 @@ const App: React.FC = () => {
     return localStorage.getItem('hasSeenOnboarding') !== 'true';
   });
 
-  // Database Seeding Logic
   useEffect(() => {
     const existingSims = localStorage.getItem('userSimulations');
     if (!existingSims || JSON.parse(existingSims).length === 0) {
-      // Initialize with our mock database if empty
       localStorage.setItem('userSimulations', JSON.stringify(MOCK_DATABASE));
-      console.log('Laboratório inicializado com banco de dados fictício.');
     }
   }, []);
 
