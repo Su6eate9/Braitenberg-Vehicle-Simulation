@@ -7,7 +7,6 @@ const SimulationLive: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Parâmetros vindos da configuração
   const vehicleType = (location.state?.vehicleType as VehicleType) || VehicleType.LOVE;
   const simName = (location.state?.simName as string) || `P3: ${vehicleType.split(': ')[1]}`;
   const configGain = (location.state?.gain as number) || 2.5;
@@ -32,16 +31,14 @@ const SimulationLive: React.FC = () => {
       const dt = (time - lastTimeRef.current) / 1000;
       setElapsedTime(prev => prev + (time - lastTimeRef.current));
       
-      const sensorOffset = 6; // Geometria do robô
+      const sensorOffset = 6;
       const wheelBase = 6;
       
-      // 1. Localização Espacial dos Sensores
-      // CORREÇÃO: Veículo Fear usa sensores TRASEIROS (Braitenberg, 1984)
+      // 1. SENSORES COM ÂNGULO MAIOR PARA CAPTAR MAIS ASSIMETRIA
       const getSensorPos = (side: 'l' | 'r') => {
-        // Fear: sensores traseiros permitem fuga com conexões ipsilaterais excitatórias
-        // Demais: sensores frontais para aproximação/exploração
         const baseAngle = vehicleType === VehicleType.FEAR ? angle + Math.PI : angle;
-        const sideAngle = side === 'l' ? baseAngle - 0.6 : baseAngle + 0.6;
+        // MUDOU: ângulo aumentado de 0.6 para 0.9 radianos (~51°)
+        const sideAngle = side === 'l' ? baseAngle - 0.9 : baseAngle + 0.9;
         return {
           x: pos.x + Math.cos(sideAngle) * sensorOffset,
           y: pos.y + Math.sin(sideAngle) * sensorOffset
@@ -51,12 +48,11 @@ const SimulationLive: React.FC = () => {
       const sLPos = getSensorPos('l');
       const sRPos = getSensorPos('r');
 
-      // 2. Cálculo da Intensidade Luminosa (Lei do Inverso do Quadrado)
+      // 2. Intensidade Luminosa
       const getIntensity = (sPos: {x: number, y: number}) => {
         const dx = lightPos.x - sPos.x;
         const dy = lightPos.y - sPos.y;
         const distSq = dx*dx + dy*dy;
-        // Normalização científica: quanto mais perto, mais forte, até 100%
         return Math.min(100, 4000 / Math.max(20, distSq));
       };
 
@@ -64,50 +60,80 @@ const SimulationLive: React.FC = () => {
       const sR = getIntensity(sRPos);
       setSensorValues({ l: sL, r: sR });
 
-      // 3. Lógica de Controle Neural Fiel (Baseada em Braitenberg, 1984)
-      const baseV = configSpeed / 25; // Velocidade base convertida do PWM
-      const gain = configGain * 0.15; // Ganho mV/lx aplicado
+      // 3. CONTROLE MOTOR - RESPOSTA NÃO-LINEAR PARA AMPLIFICAR ASSIMETRIA
+      const baseV = configSpeed / 10;
+      const gain = configGain * 0.6;  // Aumentado de 0.5 para 0.6
       
       let mL = baseV;
       let mR = baseV;
 
       switch(vehicleType) {
-        case VehicleType.FEAR: // 2a: Ipsilateral (+) + Sensores Traseiros = Fuga
-          // Com sensores atrás: luz detectada acelera motor do mesmo lado
-          // Resultado: robô vira PARA LONGE da fonte (comportamento autêntico de fuga)
-          mL = baseV + sL * gain;
-          mR = baseV + sR * gain;
+        case VehicleType.FEAR:
+          // Fuga com sensores traseiros
+          mL = baseV + sL * gain * 1.2;
+          mR = baseV + sR * gain * 1.2;
           break;
-        case VehicleType.AGGRESSION: // 2b: Contralateral (+) -> Acelera lado oposto para atacar
-          mL = baseV + sR * gain * 1.5;
-          mR = baseV + sL * gain * 1.5;
+          
+        case VehicleType.AGGRESSION:
+          // CORREÇÃO CRÍTICA: Amplificar DIFERENÇA entre sensores
+          const diffAgg = Math.abs(sL - sR);
+          const avgAgg = (sL + sR) / 2;
+          
+          // Se sensores muito similares (luz centralizada), adicionar perturbação
+          const perturbAgg = diffAgg < 5 ? 0.1 * (Math.random() - 0.5) : 0;
+          
+          // Resposta não-linear: quanto maior a assimetria, mais agressivo
+          const amplifier = 1 + (diffAgg / 10);
+          
+          mL = baseV + (sR + perturbAgg) * gain * 3.0 * amplifier;
+          mR = baseV + (sL - perturbAgg) * gain * 3.0 * amplifier;
           break;
-        case VehicleType.LOVE: // 3a: Ipsilateral (-) -> Desacelera para parar perto
-          mL = Math.max(0, baseV - sL * gain * 1.2);
-          mR = Math.max(0, baseV - sR * gain * 1.2);
+          
+        case VehicleType.LOVE:
+          // CORREÇÃO: Inibição assimétrica mais pronunciada
+          const diffLove = Math.abs(sL - sR);
+          
+          // Quando detecta luz, reduz velocidade mas mantém diferencial
+          const inhibition = 0.5;
+          const asymmetry = 0.3; // Fator de assimetria aumentado
+          
+          mL = Math.max(1.0, baseV - sL * gain * inhibition - (sL - sR) * gain * asymmetry);
+          mR = Math.max(1.0, baseV - sR * gain * inhibition - (sR - sL) * gain * asymmetry);
           break;
-        case VehicleType.EXPLORER: // 3b: Contralateral (-) -> Desacelera oposto para orbitar
-          mL = Math.max(0.2, baseV - sR * gain);
-          mR = Math.max(0.2, baseV - sL * gain);
+          
+        case VehicleType.EXPLORER:
+          // CORREÇÃO: Órbita requer diferencial CONSTANTE
+          const avgExp = (sL + sR) / 2;
+          const diffExp = sR - sL;
+          
+          // Base de movimento orbital
+          const orbitalBase = 3.0;
+          
+          // Quanto mais luz detecta, mais forte a órbita
+          const orbitalStrength = avgExp * 0.02;
+          
+          // Inibição contralateral com amplificação da diferença
+          mL = Math.max(orbitalBase, baseV - sR * gain * 0.3 + diffExp * gain * 0.4);
+          mR = Math.max(orbitalBase, baseV - sL * gain * 0.3 - diffExp * gain * 0.4);
           break;
       }
       
       setMotorValues({ l: mL, r: mR });
 
-      // 4. Cinemática Diferencial
+      // 4. Cinemática
       const v = (mL + mR) / 2;
       const omega = (mR - mL) / wheelBase;
 
-      const newAngle = angle + omega * dt * 12;
-      const newX = pos.x + Math.cos(newAngle) * v * dt * 18;
-      const newY = pos.y + Math.sin(newAngle) * v * dt * 18;
+      const newAngle = angle + omega * dt * 18;
+      const newX = pos.x + Math.cos(newAngle) * v * dt * 25;
+      const newY = pos.y + Math.sin(newAngle) * v * dt * 25;
 
       setAngle(newAngle);
       setPos({
         x: Math.max(5, Math.min(95, newX)),
         y: Math.max(5, Math.min(95, newY))
       });
-      setDistance(prev => prev + v * dt * 5);
+      setDistance(prev => prev + v * dt * 8);
     }
     lastTimeRef.current = time;
     requestRef.current = requestAnimationFrame(updateSimulation);
@@ -174,8 +200,8 @@ const SimulationLive: React.FC = () => {
                  <span className={`material-symbols-outlined text-xl ${vDetails.color}`}>smart_toy</span>
               </div>
               <div className="absolute -bottom-3 left-0 right-0 flex justify-center gap-3 opacity-60">
-                <div className="w-1.5 bg-primary rounded-full" style={{ height: `${motorValues.l * 4}px` }}></div>
-                <div className="w-1.5 bg-amber-500 rounded-full" style={{ height: `${motorValues.r * 4}px` }}></div>
+                <div className="w-1.5 bg-primary rounded-full transition-all" style={{ height: `${motorValues.l * 3}px` }}></div>
+                <div className="w-1.5 bg-amber-500 rounded-full transition-all" style={{ height: `${motorValues.r * 3}px` }}></div>
               </div>
            </div>
         </div>
@@ -210,7 +236,7 @@ const SimulationLive: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between text-[10px] font-mono"><span>M_L (Motor Esquerdo)</span><span>{motorValues.l.toFixed(2)} PWM</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
-                    <div className="h-full bg-primary/50" style={{ width: `${Math.min(100, motorValues.l * 20)}%` }}></div>
+                    <div className="h-full bg-primary/50" style={{ width: `${Math.min(100, motorValues.l * 10)}%` }}></div>
                   </div>
                 </div>
               </div>
@@ -224,7 +250,7 @@ const SimulationLive: React.FC = () => {
                 <div className="space-y-2">
                   <div className="flex justify-between text-[10px] font-mono"><span>M_R (Motor Direito)</span><span>{motorValues.r.toFixed(2)} PWM</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-500/50" style={{ width: `${Math.min(100, motorValues.r * 20)}%` }}></div>
+                    <div className="h-full bg-amber-500/50" style={{ width: `${Math.min(100, motorValues.r * 10)}%` }}></div>
                   </div>
                 </div>
               </div>
