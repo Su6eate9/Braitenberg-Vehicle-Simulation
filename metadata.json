@@ -1,0 +1,5 @@
+{
+  "name": "Braitenberg Studio",
+  "description": "A high-fidelity simulation dashboard for exploring autonomous Braitenberg vehicles, neural connections, and emerging robotic behaviors.",
+  "requestFramePermissions": []
+}
