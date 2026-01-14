@@ -1,20 +1,79 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# Braitenberg Vehicle Simulation
 
-This contains everything you need to run your app locally.
+> Simulate, analyze, and learn about emergent behaviors in Braitenberg vehicles using an interactive web interface.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1IwtygsaytN1wwxF5Cx9TIql4YitZhKSU
+## Description
 
-## Run Locally
+This project is an educational and experimental platform for simulating Braitenberg vehicles, allowing users to explore concepts in neurorobotics, emergent behavior, and scientific data analysis. Users can create, run, and analyze simulations, track progress in missions, and keep a history of experiments.
 
-**Prerequisites:**  Node.js
+## Features
 
+- Real-time simulation of different Braitenberg vehicle types (Fear, Aggression, Love, Explorer)
+- Creation and configuration of custom experiments
+- Visualization of sensor signals, metrics, and telemetry
+- Scientific log and data export (CSV)
+- Comparative analysis of simulations
+- Missions and achievements system
+- Onboarding and user authentication
+- Responsive and intuitive interface
+
+## Project Structure
+
+```
+├── App.tsx                # Main component and routing
+├── components/
+│   └── BottomNav.tsx      # Bottom navigation
+├── pages/
+│   ├── Dashboard.tsx      # Home and summary page
+│   ├── NewSimulation.tsx  # Simulation creation
+│   ├── SimulationLive.tsx # Simulation execution
+│   ├── History.tsx        # History and export
+│   ├── Analysis.tsx       # Data analysis
+│   ├── Settings.tsx       # User profile
+│   ├── Onboarding.tsx     # Initial tutorial
+│   └── Auth.tsx           # Authentication
+├── constants.ts           # Constants and support data
+├── types.ts               # Project types and enums
+├── package.json           # Dependencies and scripts
+└── ...
+```
+
+## How to Run Locally
+
+**Prerequisites:** Node.js 18+
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```bash
+   npm install
+   ```
+2. Create a `.env.local` file and set your Gemini API key:
+   ```env
+   GEMINI_API_KEY=YOUR_TOKEN_HERE
+   ```
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+4. Access `http://localhost:5173` in your browser.
+
+## Main Dependencies
+
+- React 19
+- React Router DOM 7
+- Vite 6
+- TypeScript 5
+- @google/genai
+
+## License
+
+MIT. See the LICENSE file for more details.
+
+## Authors
+
+- [Your Name Here]
+- Contributors: [Add others if necessary]
+
+---
+
+Project developed for educational and experimental purposes in the context of robotics and neuroscience.
