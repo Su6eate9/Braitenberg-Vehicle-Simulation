@@ -1,63 +1,62 @@
-
 # Braitenberg Vehicle Simulation
 
-> Simulate, analyze, and learn about emergent behaviors in Braitenberg vehicles using an interactive web interface.
+> Simule, analise e aprenda sobre comportamentos emergentes em veículos de Braitenberg usando uma interface web interativa.
 
-## Description
+## Descrição
 
-This project is an educational and experimental platform for simulating Braitenberg vehicles, allowing users to explore concepts in neurorobotics, emergent behavior, and scientific data analysis. Users can create, run, and analyze simulations, track progress in missions, and keep a history of experiments.
+Este projeto é uma plataforma educacional e experimental para simulação dos veículos de Braitenberg, permitindo explorar conceitos de neuro-robótica, comportamento emergente e análise de dados científicos. Usuários podem criar, executar e analisar simulações, além de acompanhar o progresso em missões e registrar histórico de experimentos.
 
-## Features
+## Funcionalidades
 
-- Real-time simulation of different Braitenberg vehicle types (Fear, Aggression, Love, Explorer)
-- Creation and configuration of custom experiments
-- Visualization of sensor signals, metrics, and telemetry
-- Scientific log and data export (CSV)
-- Comparative analysis of simulations
-- Missions and achievements system
-- Onboarding and user authentication
-- Responsive and intuitive interface
+- Simulação em tempo real de diferentes tipos de veículos de Braitenberg (Medo, Agressão, Amor, Explorador)
+- Criação e configuração de experimentos personalizados
+- Visualização de sinais de sensores, métricas e telemetria
+- Log científico e exportação de dados (CSV)
+- Análise comparativa de simulações
+- Sistema de missões e conquistas
+- Onboarding e autenticação de usuários
+- Interface responsiva e intuitiva
 
-## Project Structure
+## Estrutura do Projeto
 
 ```
-├── App.tsx                # Main component and routing
+├── App.tsx                # Componente principal e roteamento
 ├── components/
-│   └── BottomNav.tsx      # Bottom navigation
+│   └── BottomNav.tsx      # Navegação inferior
 ├── pages/
-│   ├── Dashboard.tsx      # Home and summary page
-│   ├── NewSimulation.tsx  # Simulation creation
-│   ├── SimulationLive.tsx # Simulation execution
-│   ├── History.tsx        # History and export
-│   ├── Analysis.tsx       # Data analysis
-│   ├── Settings.tsx       # User profile
-│   ├── Onboarding.tsx     # Initial tutorial
-│   └── Auth.tsx           # Authentication
-├── constants.ts           # Constants and support data
-├── types.ts               # Project types and enums
-├── package.json           # Dependencies and scripts
+│   ├── Dashboard.tsx      # Página inicial e resumo
+│   ├── NewSimulation.tsx  # Criação de simulação
+│   ├── SimulationLive.tsx # Execução da simulação
+│   ├── History.tsx        # Histórico e exportação
+│   ├── Analysis.tsx       # Análise de dados
+│   ├── Settings.tsx       # Perfil do usuário
+│   ├── Onboarding.tsx     # Tutorial inicial
+│   └── Auth.tsx           # Autenticação
+├── constants.ts           # Constantes e dados de apoio
+├── types.ts               # Tipos e enums do projeto
+├── package.json           # Dependências e scripts
 └── ...
 ```
 
-## How to Run Locally
+## Como Executar Localmente
 
-**Prerequisites:** Node.js 18+
+**Pré-requisitos:** Node.js 18+
 
-1. Install dependencies:
+1. Instale as dependências:
    ```bash
    npm install
    ```
-2. Create a `.env.local` file and set your Gemini API key:
+2. Crie um arquivo `.env.local` e defina sua chave da API Gemini:
    ```env
-   GEMINI_API_KEY=YOUR_TOKEN_HERE
+   GEMINI_API_KEY=SEU_TOKEN_AQUI
    ```
-3. Start the development server:
+3. Inicie o servidor de desenvolvimento:
    ```bash
    npm run dev
    ```
-4. Access `http://localhost:5173` in your browser.
+4. Acesse `http://localhost:5173` no navegador.
 
-## Main Dependencies
+## Principais Dependências
 
 - React 19
 - React Router DOM 7
@@ -65,15 +64,14 @@ This project is an educational and experimental platform for simulating Braitenb
 - TypeScript 5
 - @google/genai
 
-## License
+## Licença
 
-MIT. See the LICENSE file for more details.
+MIT. Veja o arquivo LICENSE para mais detalhes.
 
-## Authors
+## Autores
 
-- [Your Name Here]
-- Contributors: [Add others if necessary]
+- Antonio Claudino Silva Neto
 
 ---
 
-Project developed for educational and experimental purposes in the context of robotics and neuroscience.
+Projeto desenvolvido para fins educacionais e experimentais no contexto de robótica e neurociência.
