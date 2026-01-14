@@ -10,8 +10,8 @@ const SimulationLive: React.FC = () => {
   
   const vehicleType = (location.state?.vehicleType as VehicleType) || VehicleType.LOVE;
   const simName = (location.state?.simName as string) || `P3: ${vehicleType.split(': ')[1]}`;
-  const configGain = (location.state?.gain as number) || 3.0;
-  const configSpeed = (location.state?.speed as number) || 50;
+  const configGain = (location.state?.gain as number) || 2.5;
+  const configSpeed = (location.state?.speed as number) || 80;
   
   const vDetails = (VEHICLE_DETAILS as any)[vehicleType];
   
@@ -32,13 +32,13 @@ const SimulationLive: React.FC = () => {
       const dt = (time - lastTimeRef.current) / 1000;
       setElapsedTime(prev => prev + (time - lastTimeRef.current));
       
-      const sensorOffset = 6;
+      const sensorOffset = 6; 
       const wheelBase = 6;
       
+      // Cálculo da posição dos sensores baseado no ângulo atual
       const getSensorPos = (side: 'l' | 'r') => {
-        // Veículo 2a (Fear) usa sensores traseiros para fugir com conexão ipsilateral excitatória
         const baseAngle = vehicleType === VehicleType.FEAR ? angle + Math.PI : angle;
-        const sideAngle = side === 'l' ? baseAngle - 0.7 : baseAngle + 0.7;
+        const sideAngle = side === 'l' ? baseAngle - 0.85 : baseAngle + 0.85;
         return {
           x: pos.x + Math.cos(sideAngle) * sensorOffset,
           y: pos.y + Math.sin(sideAngle) * sensorOffset
@@ -48,68 +48,83 @@ const SimulationLive: React.FC = () => {
       const sLPos = getSensorPos('l');
       const sRPos = getSensorPos('r');
 
+      // Intensidade da luz inversamente proporcional ao quadrado da distância
       const getIntensity = (sPos: {x: number, y: number}) => {
         const dx = lightPos.x - sPos.x;
         const dy = lightPos.y - sPos.y;
         const distSq = dx*dx + dy*dy;
-        return Math.min(100, 5000 / Math.max(20, distSq));
+
+        return Math.min(100, 4000 / Math.max(20, distSq));
       };
 
       const sL = getIntensity(sLPos);
       const sR = getIntensity(sRPos);
       setSensorValues({ l: sL, r: sR });
 
-      // LÓGICA PURA DE BRAITENBERG (Mecanismos de Atuação)
-      const baseV = configSpeed / 20;
-      const gain = configGain * 0.3;
+      // ALGORITMOS BRAITENBERG SINTONIZADOS
+      const baseV = configSpeed / 12; 
+      const gainFactor = configGain * 0.55; 
       
       let mL = baseV;
       let mR = baseV;
 
       switch(vehicleType) {
         case VehicleType.FEAR:
-          // 2a: Medo (Ipsilateral Excitatório + Sensores Traseiros)
-          mL = baseV + sL * gain;
-          mR = baseV + sR * gain;
+          mL = baseV + sL * gainFactor * 1.3;
+          mR = baseV + sR * gainFactor * 1.3;
           break;
           
         case VehicleType.AGGRESSION:
-          // 2b: Agressão (Contralateral Excitatório)
-          // Luz à direita acelera motor esquerdo -> vira para a direita (alvo)
-          mL = baseV + sR * gain * 2.0;
-          mR = baseV + sL * gain * 2.0;
+          const sensorDiff = Math.abs(sL - sR);
+          const avgIntensity = (sL + sR) / 2;
+          const aggressionBoost = 1.5 + (sensorDiff / 20);
+          const proximityBoost = avgIntensity > 30 ? 1.5 : 1.0;
+
+          mL = baseV + sR * gainFactor * 2.8 * aggressionBoost * proximityBoost;
+          mR = baseV + sL * gainFactor * 2.8 * aggressionBoost * proximityBoost;
           break;
           
         case VehicleType.LOVE:
-          // 3a: Amor (Ipsilateral Inibitório)
-          // Luz à esquerda desacelera motor esquerdo -> vira para a esquerda e para
-          mL = Math.max(0, baseV - sL * gain * 1.5);
-          mR = Math.max(0, baseV - sR * gain * 1.5);
+          const inhibitionStrength = 0.8;
+          const minSpeed = 1.2;
+
+          mL = Math.max(minSpeed, baseV - sL * gainFactor * inhibitionStrength);
+          mR = Math.max(minSpeed, baseV - sR * gainFactor * inhibitionStrength);
+          
+          const steeringFactor = (sL - sR) * gainFactor * 0.15;
+          mL += steeringFactor;
+          mR -= steeringFactor;
           break;
           
         case VehicleType.EXPLORER:
-          // 3b: Explorador (Contralateral Inibitório)
-          // Luz à direita desacelera motor esquerdo -> desvia da luz
-          mL = Math.max(0.6, baseV - sR * gain * 1.2);
-          mR = Math.max(0.6, baseV - sL * gain * 1.2);
+          const orbitalBase = 3.5;
+          const orbitalInhibition = 0.35;
+          
+          mL = Math.max(orbitalBase, baseV - sR * gainFactor * orbitalInhibition);
+          mR = Math.max(orbitalBase, baseV - sL * gainFactor * orbitalInhibition);
+          
+          const orbitalDifferential = (sR - sL) * gainFactor * 0.25;
+          mL += orbitalDifferential;
+          mR -= orbitalDifferential;
           break;
       }
       
       setMotorValues({ l: mL, r: mR });
 
+      // Integração Cinemática (Modelo Diferencial)
       const v = (mL + mR) / 2;
       const omega = (mR - mL) / wheelBase;
 
-      const newAngle = angle + omega * dt * 15;
-      const newX = pos.x + Math.cos(newAngle) * v * dt * 25;
-      const newY = pos.y + Math.sin(newAngle) * v * dt * 25;
+      const newAngle = angle + omega * dt * 18;
+      const newX = pos.x + Math.cos(newAngle) * v * dt * 22;
+      const newY = pos.y + Math.sin(newAngle) * v * dt * 22;
 
       setAngle(newAngle);
       setPos({
-        x: Math.max(5, Math.min(95, newX)),
-        y: Math.max(5, Math.min(95, newY))
+        x: Math.max(3, Math.min(97, newX)),
+        y: Math.max(3, Math.min(97, newY))
       });
-      setDistance(prev => prev + v * dt * 8);
+      setDistance(prev => prev + v * dt * 10);
     }
     lastTimeRef.current = time;
     requestRef.current = requestAnimationFrame(updateSimulation);
@@ -174,8 +189,8 @@ const SimulationLive: React.FC = () => {
                  <span className={`material-symbols-outlined text-xl ${vDetails.color}`}>smart_toy</span>
               </div>
               <div className="absolute -bottom-3 left-0 right-0 flex justify-center gap-3 opacity-60">
-                <div className="w-1.5 bg-primary rounded-full transition-all" style={{ height: `${motorValues.l * 5}px` }}></div>
-                <div className="w-1.5 bg-amber-500 rounded-full transition-all" style={{ height: `${motorValues.r * 5}px` }}></div>
+                <div className="w-1.5 bg-primary rounded-full transition-all" style={{ height: `${motorValues.l * 8}px` }}></div>
+                <div className="w-1.5 bg-amber-500 rounded-full transition-all" style={{ height: `${motorValues.r * 8}px` }}></div>
               </div>
            </div>
         </div>
@@ -198,17 +213,17 @@ const SimulationLive: React.FC = () => {
           </div>
 
           <div className="p-5 rounded-3xl bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 shadow-sm lg:col-span-2">
-            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Telemetria (PWM % | mV/lx)</h3>
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Telemetria em Tempo Real</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-mono"><span>S_L (Esq)</span><span>{sensorValues.l.toFixed(1)}%</span></div>
+                  <div className="flex justify-between text-[10px] font-mono"><span>Sensor_L (Lux%)</span><span>{sensorValues.l.toFixed(1)}%</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
                     <div className="h-full bg-primary" style={{ width: `${sensorValues.l}%` }}></div>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-mono"><span>M_L (PWM)</span><span>{Math.round(motorValues.l * 10)}%</span></div>
+                  <div className="flex justify-between text-[10px] font-mono"><span>Motor_L (PWM%)</span><span>{Math.min(100, Math.round(motorValues.l * 12))}%</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
                     <div className="h-full bg-primary/50" style={{ width: `${Math.min(100, motorValues.l * 15)}%` }}></div>
                   </div>
@@ -216,13 +231,13 @@ const SimulationLive: React.FC = () => {
               </div>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-mono"><span>S_R (Dir)</span><span>{sensorValues.r.toFixed(1)}%</span></div>
+                  <div className="flex justify-between text-[10px] font-mono"><span>Sensor_R (Lux%)</span><span>{sensorValues.r.toFixed(1)}%</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-500" style={{ width: `${sensorValues.r}%` }}></div>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex justify-between text-[10px] font-mono"><span>M_R (PWM)</span><span>{Math.round(motorValues.r * 10)}%</span></div>
+                  <div className="flex justify-between text-[10px] font-mono"><span>Motor_R (PWM%)</span><span>{Math.min(100, Math.round(motorValues.r * 12))}%</span></div>
                   <div className="h-1.5 bg-slate-100 dark:bg-black/40 rounded-full overflow-hidden">
                     <div className="h-full bg-amber-500/50" style={{ width: `${Math.min(100, motorValues.r * 15)}%` }}></div>
                   </div>
